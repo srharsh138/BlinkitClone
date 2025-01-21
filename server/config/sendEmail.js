@@ -1,29 +1,37 @@
-import { Resend } from 'resend';
-import dotenv from  'dotenv';
-dotenv.config();
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API);
-console.log(process.env.RESEND_API);
+const transPorter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: "kotakh311@gmail.com",
+    pass: "casv enss rkeh viaw", // Ensure this is your correct app password
+  },
+});
 
+async function sendEmail(to, subject, html) {
+  if (!to || typeof to !== "string") {
+    console.error("Error: No recipient email address provided.");
+    return;
+  }
 
+  const mailFormat = {
+    from: "kotakh311@gmail.com",
+    to: to,
+    subject: subject,
+    html: html,
+  };
 
-
-const sendEmail = async (to, subject, html) => { 
-    try {
-        const { data, error } = await resend.emails.send({
-            from: 'Blinkit <onboarding@resend.dev>',
-            to: [to],
-            subject: subject,
-            html: html,
-          });
-          if (error) {
-            return console.error({ error });
-          }
-
-        return data;
-    } catch (error) {
-        console.log(error);
-    }
-} 
+  try {
+    await transPorter.sendMail(mailFormat, (err, info) => {
+      if (err) {
+        console.error("Error sending email:", err);
+      } else {
+        console.log("Mail sent:", info.response);
+      }
+    });
+  } catch (error) {
+    console.error("Unexpected error:", error);
+  }
+}
 
 export default sendEmail;

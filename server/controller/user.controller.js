@@ -1,90 +1,142 @@
 import sendEmail from '../config/sendEmail.js';
 import UserModel from '../models/user.model.js';
+import { comparePassword } from '../services/compare.password.js';
+import generateToken from '../services/generate.token.js';
+import { generateRefreshToken } from '../services/generateRefresh.token.js';
 import  {hashPassword}  from '../services/hash.password.js';
 import verifyEmailTemplate from '../utils/verifyEmailTemplate.js';
 
-// export  async function registerUserController(req, res) {
-//   try {
-//     const {name,email,password} = req.body;
-//     if(!name || !email || !password) {
-//         return res.status(400).json({message: 'All fields are required', success: false});
-    
-//     }
-//     const user=await UserModel.findOne({email});
-//     if(user) {
-//         return res.status(400).json({message: 'User already exists', success: false});
-//     }
-//       const hashpassword = await hashPassword(password);
 
-//      const newUser= new UserModel({ 
-//         name,
-//         email,
-//         password:hashpassword
-//     });
-//     await newUser.save();
-
-//     const VerifyEmailUrl = `${process.env.FRONTEND_URL}/verify-email?token=${newUser._id}`;
-//     console.log(`Sending email to: ${email}`);
-
-//     const verifyEmail=await sendEmail({
-//         to:email,
-//         subject:'Verify your email from blinkit',
-//         html: verifyEmailTemplate({
-//             name,
-//             link: VerifyEmailUrl
-//         })
-//     })
-
-//    return res.status(201).json({message: 'User created successfully', success: true, data: newUser});
-
-
-//   } catch (error) {
-//     res.status(500).send(error);    
-//   }
-// }
 export async function registerUserController(req, res) {
   try {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required', success: false });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Invalid email format', success: false });
+      return res.status(400).json({
+        message: "Provide email, name, and password.",
+        error: true,
+        success: false,
+      });
     }
 
     const user = await UserModel.findOne({ email });
+
     if (user) {
-      return res.status(400).json({ message: 'User already exists', success: false });
+      return res.json({
+        message: "Email is already registered.",
+        error: true,
+        success: false,
+      });
     }
 
-    const hashpassword = await hashPassword(password);
+    const hashedpassword = await hashPassword(password);
 
-    const newUser = new UserModel({
+    const payload = {
       name,
       email,
-      password: hashpassword,
-    });
-    await newUser.save();
+      password: hashedpassword,
+    };
 
-    const VerifyEmailUrl = `${process.env.FRONTEND_URL}/verify-email?token=${newUser._id}`;
-    console.log(`Sending email to: ${email}`);
-
-    await sendEmail({
-      to: String(email),
-      subject: 'Verify your email from Blinkit',
-      html: verifyEmailTemplate({
+    const newUser = new UserModel(payload);
+    const save = await newUser.save();
+    const VerifyEmailUrl = `${process.env.FRONTEND_URL}/verify-email?code=${save?._id}`;
+    await sendEmail(
+      save.email, 
+      "Verify email from binkeyit",
+      verifyEmailTemplate({
         name,
-        link: VerifyEmailUrl,
-      }),
+        url: VerifyEmailUrl,
+      })
+    );
+
+    return res.json({
+      message: "User registered successfully.",
+      error: false,
+      success: true,
+      data: save,
+    });
+  } catch (error) {
+   
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+export async function verifyEmailController(req,res) {
+  try {
+    const { code } = req.body;
+    const user = await UserModel.findOne({ _id :code });
+    if(!user){
+      return res.status(400).json({
+        message: "Invalid verification code",
+        error: true,
+        success: false,
+      });
+    }
+    const updateUser=await UserModel.updateOne({_id:code},{verify_email:true});
+
+    return res.json({
+      message: "Email verified successfully.",
+      error: false,
+      success: true,
+      data: updateUser,
     });
 
-    return res.status(201).json({ message: 'User created successfully', success: true, data: newUser });
   } catch (error) {
-    console.error('Error in registerUserController:', error);
-    res.status(500).json({ message: 'Internal server error', success: false, error });
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+export async function loginController(req,res) {
+  try {
+    const { email, password } = req.body;
+    const user = await UserModel.findOne({ email });
+    if (!user) {
+      return res.status(400).json({
+        message: "user not found",
+        error: true,
+        success: false,
+      });
+    }
+     if(user.status !=="Active"){
+         return res.status(400).json({
+        message: "User is not active",
+        error: true,
+        success: false,
+        });
+     }
+
+    const isValidPassword = await comparePassword(password, user.password);
+    if(!isValidPassword){
+      return res.status(400).json({
+        message: "Invalid credentials",
+        error: true,
+        success: false,
+      });
+    }
+    const accessToken = await generateToken(user._id,res);
+    const refreshToken = await generateRefreshToken(user._id,res);
+
+
+    return res.json({
+      message: "User logged in successfully.",
+      error: false,
+      success: true,
+      data: { user, accessToken, refreshToken },
+    });
+
+
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
   }
 }
 
